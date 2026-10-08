@@ -2,9 +2,10 @@
 export type Role = "planner" | "contract" | "generator" | "evaluator";
 export type LLM = (role: Role, system: string, user: string) => Promise<string>;
 
-/** Minimal Messages API client over fetch (no SDK dependency). Retries rate limits and overloads. */
-export function anthropicLLM(model = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5-5", maxTokens = 32000): LLM {
-  const key = process.env.ANTHROPIC_API_KEY;
+/** Minimal Messages API client over fetch (no SDK dependency). */
+export function anthropicLLM(model = "claude-sonnet-5-5", maxTokens = 16000): LLM {
+  // Keys pasted into .env / compose often carry quotes, CR/LF or spaces, which the API rejects as 401.
+  const key = (process.env.ANTHROPIC_API_KEY ?? "").trim().replace(/^["']|["']$/g, "").trim();
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
   return async (_role, system, user) => {
     for (let attempt = 1; ; attempt++) {
@@ -33,4 +34,9 @@ export class ScriptedLLM {
     this.calls.push(role);
     return this.handlers[role](user);
   };
+}
+
+/** One minimal call to verify the key end to end; returns the model's reply. */
+export async function testKey(model = "claude-sonnet-5-5"): Promise<string> {
+  return anthropicLLM(model, 16)("planner", "Reply with the single word: ok", "ping");
 }

@@ -1,0 +1,5 @@
+{
+  "title": "Users and header-based authentication",
+  "done": "POST /users registers a user (role is always 'user'; 400 invalid email, 409 duplicate). GET /me returns the caller identified by the x-user-id header; 401 when missing, malformed or unknown. Validation and auth failures use a JSON error handler.",
+  "check": ["npm", "run", "--silent", "verify"]
+}

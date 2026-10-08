@@ -1,0 +1,6 @@
+{
+  "title": "Concurrency-safe booking (no double-booking under load)",
+  "done": "Of 20 simultaneous requests for the same room and slot exactly one returns 201 and 19 return 409, leaving one confirmed row. The invariant is enforced by the database itself: inserting an overlapping confirmed booking directly via SQL fails with SQLSTATE 23P01, while cancelled bookings and other rooms do not conflict.",
+  "check": ["npm", "run", "--silent", "verify"],
+  "lenientAttempts": [1]
+}

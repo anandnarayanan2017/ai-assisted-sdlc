@@ -1,0 +1,20 @@
+{
+  "name": "ai-assisted-sdlc",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Planner/contract/generator/check/evaluator harness for long-running AI-assisted delivery (TypeScript)",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "demo": "tsx harness/src/cli.ts room-booking --approve",
+    "demo:live": "tsx harness/src/cli.ts room-booking --llm anthropic"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

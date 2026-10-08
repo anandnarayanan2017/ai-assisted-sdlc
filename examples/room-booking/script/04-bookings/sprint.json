@@ -1,0 +1,5 @@
+{
+  "title": "Create, list and cancel bookings",
+  "done": "POST /bookings {roomId,startAt,endAt} creates a confirmed booking (201). 404 unknown room, 400 invalid/inverted times, 409 when it overlaps a confirmed booking in the same room (back-to-back is allowed). GET /bookings lists the caller's own. DELETE /bookings/:id cancels (owner or admin; 403 otherwise) and frees the slot.",
+  "check": ["npm", "run", "--silent", "verify"]
+}

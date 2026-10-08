@@ -1,0 +1,5 @@
+{
+  "title": "Availability search by time window and capacity",
+  "done": "GET /rooms/available?startAt&endAt&minCapacity returns rooms with capacity >= minCapacity (default 1) that have no confirmed booking overlapping the window, ordered by capacity then id. Cancelled and back-to-back bookings do not exclude a room. 400 for missing or inverted window. GET /rooms/:id keeps working.",
+  "check": ["npm", "run", "--silent", "verify"]
+}

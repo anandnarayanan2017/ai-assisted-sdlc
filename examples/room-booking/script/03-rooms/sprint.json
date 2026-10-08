@@ -1,0 +1,5 @@
+{
+  "title": "Rooms CRUD with admin-only writes",
+  "done": "Authenticated users can list and fetch rooms; only admins can create, update and delete. 400 on invalid body or non-numeric id, 404 when missing, 409 on duplicate name, 403 for non-admin writes, 401 unauthenticated.",
+  "check": ["npm", "run", "--silent", "verify"]
+}

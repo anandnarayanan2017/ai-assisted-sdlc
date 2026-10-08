@@ -1,0 +1,9 @@
+{
+  "name": "room-booking",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "verify": "tsc --noEmit && vitest run",
+    "start": "tsx src/server.ts"
+  }
+}

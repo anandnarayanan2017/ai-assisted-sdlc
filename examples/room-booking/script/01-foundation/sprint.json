@@ -1,0 +1,5 @@
+{
+  "title": "Foundation: migrations, schema and health check",
+  "done": "Migration runner is idempotent and concurrency-safe; users and rooms tables exist with valid-role constraint; GET /health reports database connectivity. Interfaces: src/app.ts exports createApp(pool): Express; src/db/migrate.ts exports migrate(pool): Promise<string[]> returning names applied.",
+  "check": ["npm", "run", "--silent", "verify"]
+}

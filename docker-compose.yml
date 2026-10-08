@@ -1,0 +1,40 @@
+# Everything runs in containers:
+#   docker compose up --build --abort-on-container-exit --exit-code-from demo   # full scripted SDLC run
+#   docker compose run --rm unit                                                 # harness unit tests (no DB)
+#   ANTHROPIC_API_KEY=... docker compose run --rm live                           # real model, same flow
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: rooms
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d rooms"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  demo:
+    build: .
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/rooms
+    command: npm run demo
+
+  live:
+    build: .
+    profiles: ["live"]
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/rooms
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    command: npm run demo:live
+
+  unit:
+    build: .
+    profiles: ["test"]
+    command: sh -c "npm run typecheck && npm test"

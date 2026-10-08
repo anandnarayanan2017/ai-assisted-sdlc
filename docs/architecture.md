@@ -14,7 +14,7 @@ flowchart TB
         ESC["Escalation<br/>(blocked sprint)"]
     end
 
-    subgraph Orchestrator["Orchestrator (harness.py) - owns the loop, holds no model context"]
+    subgraph Orchestrator["Orchestrator (harness.ts) - owns the loop, holds no model context"]
         ORCH["Sprint scheduler<br/>retry budget, thresholds,<br/>resume from progress.json"]
     end
 
@@ -31,7 +31,7 @@ flowchart TB
 
     subgraph State["Shared state (the only handoff channel)"]
         SPEC[("spec.json")]
-        CON[("contract.json")]
+        CON[("contracts/NN.json<br/>done + check + acceptance tests")]
         PROG[("progress.json")]
         GIT[("git history<br/>+ source tree")]
     end
@@ -76,7 +76,7 @@ sequenceDiagram
 
     loop each feature (sprint)
         O->>C: negotiate contract
-        C->>S: write contract.json (done + check argv)
+        C->>S: write contracts/NN.json (done, check argv, acceptance tests)
         loop attempt 1..N
             O->>G: feature + contract + prior QA bugs
             G->>S: write files, git commit
@@ -108,7 +108,7 @@ stateDiagram-v2
     Planning --> Building: spec.json written
     state Building {
         [*] --> Contracting
-        Contracting --> Generating: contract.json
+        Contracting --> Generating: contracts/NN.json
         Generating --> Verifying: commit
         Verifying --> Evaluating: gate result
         Evaluating --> Passed: gate OK and scores >= thresholds
@@ -140,7 +140,7 @@ flowchart LR
 ```
 
 The deterministic gate comes first and **cannot be overridden by the evaluator**: a 10/10 from the
-LLM does not pass failing code (`test_gate_overrides_a_lenient_evaluator`).
+LLM does not pass failing code (unit test: *a deterministic check overrides a lenient evaluator*; live demo: sprint 5, attempt 1).
 
 ## 5. Where this sits in the SDLC
 
@@ -177,10 +177,10 @@ flowchart TB
 
 | File | Writer | Reader | Purpose |
 |---|---|---|---|
-| `spec.json` | Planner | Contract, Orchestrator | Ambitious scope, no implementation detail |
-| `contract.json` | Contract negotiator | Generator, Check, Evaluator | Definition of done + runnable `check` argv |
+| `.harness/spec.json` | Planner | Contract, Orchestrator | Ambitious scope, no implementation detail |
+| `.harness/contracts/NN.json` | Contract negotiator | Generator, Check, Evaluator | Definition of done, runnable `check` argv, and the **acceptance tests**, which the harness restores before every check so the generator cannot weaken them |
 | source tree + git | Generator | Check, Evaluator | Work product and rollback points |
-| `progress.json` | Orchestrator | Orchestrator (next process) | Resume after crash or context reset |
+| `.harness/progress.json` | Orchestrator | Orchestrator (next process) | Resume after crash or context reset |
 
 ## 8. Design assumptions to re-test as models improve
 
@@ -193,3 +193,88 @@ Each component encodes a belief that the model can't do something alone. Ablate 
 | Separate evaluator | Self-grading is lenient | Let generator self-score, compare escaped bugs |
 | Per-sprint evaluation | Long builds need frequent QA | Evaluate once at the end |
 | Context resets | Model gets anxious near the limit | Use compaction, compare completion |
+
+## 9. Docker topology
+
+Everything runs in containers; nothing needs to be installed on the host except Docker.
+
+```mermaid
+flowchart LR
+    DEV([developer]) -- "docker compose up" --> C
+
+    subgraph C["docker compose"]
+        direction LR
+        subgraph DEMO["demo (node:22, built from ./Dockerfile)"]
+            CLI["cli.ts"] --> H["Harness"]
+            H --> LLMX{{"LLM"}}
+            H -- "writes files, git commit" --> WS[("examples/room-booking/<br/>workspace")]
+            H -- "spawns check:<br/>npm run verify" --> V["tsc + vitest + supertest<br/>(runs the generated app)"]
+            V --> WS
+        end
+        subgraph DB["db (postgres:16-alpine, tmpfs)"]
+            PG[("rooms database")]
+        end
+        V -- "DATABASE_URL" --> PG
+    end
+
+    LLMX -. "default: scripted replay" .-> SCRIPT["script/NN-*/<br/>planner, contract, attempts"]
+    LLMX -. "--llm anthropic<br/>ANTHROPIC_API_KEY" .-> API["Anthropic Messages API"]
+```
+
+`db` has a healthcheck, `demo` waits for it, and the exit code of `demo` is the exit code of the run
+(non-zero when a sprint is blocked).
+
+## 10. The room-booking run, sprint by sprint
+
+Six sprints, 47 acceptance tests, two deliberate failures that the harness must catch and repair.
+
+```mermaid
+flowchart TB
+    S1["1 Foundation<br/>migrations, schema, /health"] --> S2["2 Users + auth<br/>POST /users, GET /me"]
+    S2 --> S3["3 Rooms CRUD<br/>admin-only writes"]
+    S3 --> S4["4 Bookings<br/>create, list, cancel<br/>(check-then-insert)"]
+    S4 --> S5["5 Concurrency<br/>20 parallel requests, 1 winner"]
+    S5 --> S6["6 Availability<br/>GET /rooms/available"]
+    S6 --> REL(["human approval, released"])
+
+    S5 -. "attempt 1: transaction without a lock.<br/>Evaluator says 9/10, check FAILS (10 winners).<br/>Attempt 2: EXCLUDE USING gist constraint" .-> S5
+    S6 -. "attempt 1: /rooms/:id registered before /rooms/available.<br/>Evaluator reports 400s. Attempt 2: reorder routes" .-> S6
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant O as Orchestrator
+    participant G as Generator
+    participant K as Check (npm run verify)
+    participant PG as Postgres
+    participant E as Evaluator
+
+    Note over O,E: Sprint 5, attempt 1
+    O->>G: feature + contract
+    G-->>O: bookings.ts using BEGIN / SELECT overlap / INSERT / COMMIT
+    O->>K: run all accumulated tests
+    K->>PG: 20 parallel POST /bookings
+    PG-->>K: 9-10 inserts succeed (each saw an empty slot)
+    K-->>O: FAIL, expected 1 winner, got 10
+    O->>E: contract + failing output
+    E-->>O: functionality 9, no bugs (rubber stamp)
+    Note over O: check failed, so the sprint fails regardless of the score
+    Note over O,E: Sprint 5, attempt 2
+    O->>G: qa_bugs = failing assertions
+    G-->>O: migration 003 exclusion constraint + per-room advisory lock, 23P01 mapped to 409
+    O->>K: run all accumulated tests
+    K->>PG: 20 parallel POST /bookings
+    PG-->>K: 1 insert wins, 19 exclusion violations
+    K-->>O: PASS (all sprints 1-5 re-verified)
+    O->>E: contract + passing output
+    E-->>O: 9 / 8
+    O->>O: sprint passed, persist progress.json
+```
+
+Why this example works for the demo:
+
+- **Real Postgres is the verifier.** The invariant (no overlapping confirmed bookings) is enforced by a
+  GiST exclusion constraint (plus a per-room advisory lock that queues writers), and the check proves it with real concurrent transactions. A mock cannot.
+- **Regression safety is automatic.** The check is cumulative, so sprint 6 re-runs the tests of sprints 1 to 5.
+- **The generator cannot cheat.** Acceptance tests are owned by the contract and restored before each check.

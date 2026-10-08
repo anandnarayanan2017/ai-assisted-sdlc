@@ -2,7 +2,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { Harness, defaultConfig, type Progress } from "../src/harness.js";
+import { Harness, defaultConfig, parseJSON, type Progress } from "../src/harness.js";
 import { ScriptedLLM } from "../src/llm.js";
 
 const GOOD = "console.log('ok')";
@@ -87,5 +87,40 @@ describe("harness", () => {
     const p: Progress = await again.run("todo");
     expect(first.llm.calls).toEqual([]);
     expect(p.status).toBe("awaiting_approval");
+  });
+});
+
+describe("parseJSON", () => {
+  it("accepts bare, fenced and prose-wrapped JSON", () => {
+    expect(parseJSON('{"a":1}')).toEqual({ a: 1 });
+    expect(parseJSON('```json\n{"a":1}\n```')).toEqual({ a: 1 });
+    expect(parseJSON('Here you go:\n{"a":{"b":2}}\nDone.')).toEqual({ a: { b: 2 } });
+    expect(() => parseJSON("no json here")).toThrow(/not JSON/);
+  });
+});
+
+describe("agent context", () => {
+  it("gives the generator the contract tests and existing files on its first attempt", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "h-"));
+    let seen: Record<string, string> = {};
+    const llm = new ScriptedLLM({
+      planner: () => '```json\n{"features": ["a"]}\n```',
+      contract: () => JSON.stringify({ done: "", check: ["true"], tests: { "tests/a.txt": "spec" } }),
+      generator: (u) => {
+        seen = (JSON.parse(u) as { workspace: Record<string, string> }).workspace;
+        return JSON.stringify({ files: { "app.js": GOOD } });
+      },
+      evaluator: () => "Verdict: " + JSON.stringify({ scores: { functionality: 9, craft: 9 }, bugs: [] }),
+    });
+    const p = await new Harness(llm.call, defaultConfig(dir)).run("x");
+    expect(seen["tests/a.txt"]).toBe("spec");
+    expect(Object.keys(seen).some((k) => k.startsWith(".harness") || k.startsWith(".git/"))).toBe(false);
+    expect(p.status).toBe("awaiting_approval");
+  });
+
+  it("caps the plan with maxFeatures", async () => {
+    const { h, cfg } = await make({ attempts: [GOOD] });
+    cfg.maxFeatures = 1;
+    expect((await h.run("todo")).features).toEqual(["add"]);
   });
 });

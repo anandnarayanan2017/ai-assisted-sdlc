@@ -23,6 +23,38 @@ docker compose --profile live run --rm live
 
 Without Docker (needs Node 22 and a Postgres at `DATABASE_URL`): `npm ci && npm ci --prefix examples/room-booking && npm run demo`.
 
+## Live run with a real model
+
+The scripted run replays recorded model turns, so it is free and deterministic. The live run sends the same flow to
+the Anthropic Messages API: the model writes the plan, the contract tests, the code and the evaluations itself.
+
+```bash
+cp .env.example .env                       # set ANTHROPIC_API_KEY (and optionally ANTHROPIC_MODEL)
+
+# 1. Smoke run: plan, then build only the first 2 sprints (a few minutes, a handful of calls).
+docker compose --profile live run --rm live npm run demo:live -- --max-features 2
+
+# 2. Full run. Ends at "AWAITING_APPROVAL": the human gate.
+docker compose --profile live run --rm live
+
+# 3. Review, then release. --resume reuses .harness/progress.json: no replanning, no rebuilding.
+docker compose --profile live run --rm live npm run demo:live -- --resume --approve
+```
+
+What to look at afterwards (the workspace is mounted, so it stays on the host):
+
+| Path under `examples/room-booking/workspace/` | Shows |
+|---|---|
+| `.harness/calls/NNN-<role>.json` | Every model call in order: system prompt, exact input, raw reply, latency |
+| `.harness/spec.json`, `.harness/contracts/*.json` | Planner output and each sprint's contract (done, check, tests) |
+| `.harness/progress.json` | Sprint state; what `--resume` continues from |
+| `git log -p` | One commit per generator attempt, including the failed ones |
+
+Each agent call starts from a fresh context. The contract and generator get the current workspace files (the
+generator sees the contract tests from attempt 1). On a retry, the generator also gets the failing test names and
+the check output. A live run is not reproducible. A sprint that fails 3 attempts ends with `BLOCKED` and exit
+code 1; read its transcripts to see why. Use `--model <id>` to try another model.
+
 ## What you will see
 
 Six sprints run in order. Two are built wrongly on the first attempt and repaired:

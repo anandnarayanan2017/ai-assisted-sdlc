@@ -9,8 +9,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "demo": "tsx harness/src/cli.ts room-booking --approve",
-    "demo:live": "tsx harness/src/cli.ts room-booking --llm anthropic"
-    "check-key": "tsx harness/src/check-key.ts",
+    "demo:live": "tsx harness/src/cli.ts room-booking --llm anthropic",
+    "check-key": "tsx harness/src/check-key.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

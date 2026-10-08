@@ -8,14 +8,21 @@ export function anthropicLLM(model = "claude-sonnet-5-5", maxTokens = 16000): LL
   const key = (process.env.ANTHROPIC_API_KEY ?? "").trim().replace(/^["']|["']$/g, "").trim();
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
   return async (_role, system, user) => {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] }),
-    });
-    if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${await res.text()}`);
-    const body = (await res.json()) as { content: { type: string; text?: string }[] };
-    return body.content.map((c) => c.text ?? "").join("");
+    for (let attempt = 1; ; attempt++) {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] }),
+      });
+      if ((res.status === 429 || res.status >= 500) && attempt < 5) {
+        await new Promise((r) => setTimeout(r, 2 ** attempt * 1000));
+        continue;
+      }
+      if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${await res.text()}`);
+      const body = (await res.json()) as { content: { type: string; text?: string }[]; stop_reason?: string };
+      if (body.stop_reason === "max_tokens") throw new Error(`reply truncated at max_tokens=${maxTokens}`);
+      return body.content.map((c) => c.text ?? "").join("");
+    }
   };
 }
 

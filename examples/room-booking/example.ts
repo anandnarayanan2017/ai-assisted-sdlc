@@ -47,7 +47,9 @@ const byTitle = async (title: string) => {
 const example: Example = {
   request:
     "Build a meeting-room booking REST API in TypeScript (Node, Express, PostgreSQL): users, rooms, bookings, " +
-    "no double-booking even under concurrent load, and availability search.",
+    "no double-booking even under concurrent load, and availability search. Installed packages (add no others): " +
+    "express 5, pg, zod, supertest, vitest, tsx, typescript. Tests run with `npm run verify` against the empty " +
+    "Postgres 16 at process.env.DATABASE_URL.",
   seedDir: path.join(here, "seed"),
   env: { DATABASE_URL },
 

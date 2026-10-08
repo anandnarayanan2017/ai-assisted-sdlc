@@ -1,7 +1,8 @@
 # Everything runs in containers:
 #   docker compose up --build --abort-on-container-exit --exit-code-from demo   # full scripted SDLC run
 #   docker compose run --rm unit                                                 # harness unit tests (no DB)
-#   ANTHROPIC_API_KEY=... docker compose run --rm live                           # real model, same flow
+#   docker compose --profile live run --rm live                                  # real model (key in .env), same flow
+#   docker compose --profile live run --rm live npm run demo:live -- --max-features 2   # cheaper smoke run
 services:
   db:
     image: postgres:16-alpine
@@ -32,6 +33,10 @@ services:
     environment:
       DATABASE_URL: postgres://postgres:postgres@db:5432/rooms
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-5-5}
+    volumes:
+      # Generated code, contracts and every model transcript stay on the host after the run.
+      - ./examples/room-booking/workspace:/app/examples/room-booking/workspace
     command: npm run demo:live
 
   unit:

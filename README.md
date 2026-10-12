@@ -23,6 +23,9 @@ docker compose --profile live run --rm live
 
 Without Docker (needs Node 22 and a Postgres at `DATABASE_URL`): `npm ci && npm ci --prefix examples/room-booking && npm run demo`.
 
+In Claude Code, `/sdlc [test|demo|live|resume|inspect]` runs any of these and summarises the result
+([.claude/skills/sdlc/SKILL.md](.claude/skills/sdlc/SKILL.md)). Without Docker, it starts a local Postgres for you.
+
 ## Live run with a real model
 
 The scripted run replays recorded model turns, so it is free and deterministic. The live run sends the same flow to

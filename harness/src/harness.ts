@@ -9,6 +9,7 @@ import { cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises"
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
+import { checkArchitecture, formatViolations, type ArchRules } from "./architecture.js";
 import type { LLM } from "./llm.js";
 
 const sh = promisify(execFile);
@@ -55,6 +56,8 @@ export interface Config {
   maxFeatures?: number; // cap the plan (keeps live runs affordable)
   checkTimeoutMs: number;
   env?: Record<string, string>;
+  /** Architect-owned rules, checked with the contract check; violations fail the sprint. */
+  architecture?: ArchRules;
   onEvent?: (e: HarnessEvent) => void;
 }
 
@@ -64,7 +67,7 @@ export const defaultConfig = (workdir: string): Config => ({
 
 /** Failing-test / compiler-error lines from check output (for QA feedback and logs). */
 export function failureLines(output: string, max = 6): string[] {
-  const hits = output.split("\n").map((l) => l.trim()).filter((l) => /^(FAIL|AssertionError|Error:|TypeError)|error TS\d+/.test(l));
+  const hits = output.split("\n").map((l) => l.trim()).filter((l) => /^(FAIL|AssertionError|Error:|TypeError|ARCH )|error TS\d+/.test(l));
   return [...new Set(hits)].slice(0, max);
 }
 
@@ -166,7 +169,7 @@ export class Harness {
   private async generate(feature: string, c: Contract, attempt: number, bugs: string[]) {
     const raw = await this.llm("generator", PROMPTS.generator,
       JSON.stringify({ feature, contract: { done: c.done, check: c.check }, attempt, qa_bugs: bugs,
-        workspace: await this.snapshot() }));
+        architecture: this.cfg.architecture, workspace: await this.snapshot() }));
     const files = parseJSON<{ files: Record<string, string> }>(raw).files;
     for (const [rel, content] of Object.entries(files)) await this.write(rel, content);
     await this.restoreTests();
@@ -193,6 +196,19 @@ export class Harness {
         resolve({ ok: code === 0, output: `exit=${code}\n${out.replace(/\x1b\[[0-9;]*m/g, "")}` });
       });
     });
+  }
+
+  /** The contract check plus the architecture rules: both deterministic, both must pass. */
+  private async verify(c: Contract): Promise<GateResult & { violations: string[] }> {
+    const g = await this.gate(c);
+    if (!this.cfg.architecture) return { ...g, violations: [] };
+    const v = formatViolations(await checkArchitecture(this.w, this.cfg.architecture));
+    const violations = v ? v.split("\n") : [];
+    return {
+      ok: g.ok && violations.length === 0,
+      output: violations.length ? `${g.output}\n--- architecture rules ---\n${v}` : g.output,
+      violations,
+    };
   }
 
   private async evaluate(feature: string, attempt: number, c: Contract, g: GateResult,
@@ -233,10 +249,10 @@ export class Harness {
       for (let attempt = 1; attempt <= this.cfg.maxAttempts; attempt++) {
         p.attempts[feature] = attempt;
         const changed = await this.generate(feature, contract, attempt, bugs);
-        const g = await this.gate(contract);
+        const g = await this.verify(contract);
         const e = await this.evaluate(feature, attempt, contract, g, changed);
         const ok = this.passes(g, e);
-        this.emit({ type: "verdict", feature, attempt, gateOk: g.ok, scores: e.scores, pass: ok, failures: g.ok ? [] : failureLines(g.output) });
+        this.emit({ type: "verdict", feature, attempt, gateOk: g.ok, scores: e.scores, pass: ok, failures: g.ok ? [] : failureLines(g.output), violations: g.violations });
         if (ok) { p.done[feature] = "pass"; break; }
         bugs = [...e.bugs, ...(g.ok ? [] : [
           `check failed:\n${failureLines(g.output, 20).join("\n")}\n--- output tail ---\n${g.output.slice(-3000)}`])];

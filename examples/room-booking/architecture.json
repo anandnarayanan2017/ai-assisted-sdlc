@@ -1,0 +1,31 @@
+{
+  "root": "src",
+  "allowedPackages": ["express", "pg", "zod"],
+  "rules": [
+    {
+      "name": "routes-are-independent",
+      "from": "^src/routes/",
+      "forbid": "^src/routes/",
+      "because": "a route module must not depend on another; share code through src/http.ts, src/auth.ts or src/db/"
+    },
+    {
+      "name": "no-upward-imports",
+      "from": "^src/(http|auth)\\.ts$|^src/db/",
+      "forbid": "^src/(app|server)\\.ts$|^src/routes/",
+      "because": "lower layers (http, auth, db) must not import the app, the server or routes"
+    },
+    {
+      "name": "pool-injected-from-composition-root",
+      "from": "^src/(?!server\\.ts$)",
+      "forbid": "^pg$",
+      "allowTypeOnly": true,
+      "because": "only src/server.ts creates the pg Pool; everything else receives it (import type { Pool } is fine)"
+    },
+    {
+      "name": "db-layer-is-framework-free",
+      "from": "^src/db/",
+      "forbid": "^(express|zod)$",
+      "because": "migrations and data access must not depend on HTTP or validation libraries"
+    }
+  ]
+}

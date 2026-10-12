@@ -23,6 +23,9 @@ docker compose --profile live run --rm live
 
 Without Docker (needs Node 22 and a Postgres at `DATABASE_URL`): `npm ci && npm ci --prefix examples/room-booking && npm run demo`.
 
+In Claude Code, `/sdlc [test|demo|live|resume|inspect]` runs any of these and summarises the result
+([.claude/skills/sdlc/SKILL.md](.claude/skills/sdlc/SKILL.md)). Without Docker, it starts a local Postgres for you.
+
 ## Live run with a real model
 
 The scripted run replays recorded model turns, so it is free and deterministic. The live run sends the same flow to
@@ -68,6 +71,8 @@ Six sprints run in order. Two are built wrongly on the first attempt and repaire
 ## Principles
 
 - Builder and judge are separate agents; **a deterministic check outranks the LLM judge**.
+- Architecture is enforced, not reviewed: architect-owned rules (`examples/<name>/architecture.json`: layering, dependency
+  direction, approved packages) run with every check, live outside the workspace, and violations go back to the generator.
 - Acceptance tests belong to the contract. The harness restores them before every check, so the generator cannot weaken them.
 - No shared context window. State lives in `.harness/` (spec, contracts, progress) and git, so a crashed run resumes.
 - A sprint that exhausts its retries blocks the run and escalates instead of building on a broken base.
@@ -92,9 +97,11 @@ flowchart LR
 | Path | Role |
 |---|---|
 | `harness/src/harness.ts` | Orchestrator: roles, check gate, test protection, resume |
+| `harness/src/architecture.ts` | Architecture-rules check (import graph vs. `architecture.json`) |
 | `harness/src/llm.ts` | Anthropic client (fetch, no SDK) and `ScriptedLLM` |
 | `harness/src/cli.ts` | `tsx harness/src/cli.ts <example> [--approve] [--resume] [--llm anthropic]` |
 | `harness/test/` | Retry, check-beats-judge, block, approve, tamper-restore, path-escape, resume |
+| `examples/room-booking/architecture.json` | The architect's rules for the example: independent routes, no upward imports, pool injected from `server.ts`, approved packages |
 | `examples/room-booking/script/` | Recorded planner, contract tests, and generator attempts per sprint |
 | `examples/room-booking/seed/` | Workspace scaffold (tsconfig, vitest config, scripts) |
 | `Dockerfile`, `docker-compose.yml` | App image and the `db` / `demo` / `unit` / `live` services |

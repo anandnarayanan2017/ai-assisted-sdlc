@@ -1,5 +1,5 @@
 /** LLM access. Every call is a fresh context: the harness's unit of "context reset". */
-export type Role = "planner" | "contract" | "generator" | "evaluator";
+export type Role = "planner" | "contract" | "generator" | "prober" | "evaluator";
 export type LLM = (role: Role, system: string, user: string) => Promise<string>;
 
 /** Minimal Messages API client over fetch (no SDK dependency). */
@@ -26,13 +26,19 @@ export function anthropicLLM(model = "claude-sonnet-5-5", maxTokens = 16000): LL
   };
 }
 
+type Handler = (user: string) => string | Promise<string>;
+
 /** Deterministic stand-in for tests and offline demos: role -> handler(user) -> reply. */
 export class ScriptedLLM {
   readonly calls: Role[] = [];
-  constructor(private handlers: Record<Role, (user: string) => string | Promise<string>>) {}
+  constructor(
+    private handlers: Record<Exclude<Role, "prober">, Handler> & { prober?: Handler },
+  ) {}
   readonly call: LLM = async (role, _system, user) => {
     this.calls.push(role);
-    return this.handlers[role](user);
+    const h = this.handlers[role];
+    if (!h) throw new Error(`scripted LLM has no "${role}" handler`);
+    return h(user);
   };
 }
 

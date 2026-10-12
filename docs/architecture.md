@@ -135,6 +135,7 @@ flowchart LR
     AR -- yes --> C{LLM scores<br/>all >= thresholds?}
     C -- no --> G[FAIL<br/>bugs = evaluator findings]
     C -- yes --> D[PASS]
+    P[Live probes<br/>evaluator's Playwright tests<br/>against the running app] -.-> C
     F --> R{attempts left?}
     G --> R
     R -- yes --> A
@@ -149,6 +150,17 @@ Architecture rules are part of the same deterministic gate. The architect writes
 the import graph after every generator attempt (`harness/src/architecture.ts`). The file sits outside the workspace,
 so no agent can relax it. The generator sees the rules from attempt 1, and violations come back as
 `ARCH <rule>: <file> -> <target> (<reason>)` lines (unit test: *fails the sprint and feeds the violation back*).
+
+The evaluator does not judge from the diff alone. After a passing check the harness starts the app
+(`Example.app`: start command, port, readiness path), asks the evaluator's prober for Playwright tests that hunt
+for what the contract missed, runs them against the live app and hands the results to the evaluator. Probes are
+evidence, not a gate: an evaluator-written test can be wrong, so the evaluator weighs a failure instead of the
+harness acting on it automatically.
+
+The evaluator is calibrated against human judgment. `calibration.json` stores real evaluator inputs with a human
+grade and the reason for it. Every evaluator prompt includes them as few-shot examples, and `npm run calibrate`
+grades each case with the evaluator (leave-one-out, so a case is never its own example) and reports agreement,
+mean score error and **false approvals**: work the judge passed and a human failed. Any false approval exits 1.
 
 ## 5. Where this sits in the SDLC
 
@@ -199,6 +211,8 @@ Each component encodes a belief that the model can't do something alone. Ablate 
 | Planner | Model under-scopes from a short prompt | Skip it, compare feature count |
 | Sprint contract | Model drifts from spec mid-build | Merge contract into generator prompt |
 | Separate evaluator | Self-grading is lenient | Let generator self-score, compare escaped bugs |
+| Live probes (`--no-probe`) | Reading code misses runtime bugs | Disable, compare escaped bugs |
+| Calibration few-shot (`--no-calibration`) | An uncalibrated judge is lenient | Disable, compare `npm run calibrate` false approvals |
 | Per-sprint evaluation | Long builds need frequent QA | Evaluate once at the end |
 | Context resets | Model gets anxious near the limit | Use compaction, compare completion |
 

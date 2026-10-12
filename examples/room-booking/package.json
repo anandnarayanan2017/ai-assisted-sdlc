@@ -6,6 +6,7 @@
   "description": "Target project built by the harness (dependencies only; source is generated into ./workspace)",
   "dependencies": { "express": "^5.1.0", "pg": "^8.13.0", "zod": "^3.24.0" },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "@types/express": "^5.0.0", "@types/node": "^22.10.0", "@types/pg": "^8.11.0",
     "@types/supertest": "^6.0.2", "supertest": "^7.0.0", "tsx": "^4.19.0",
     "typescript": "^5.7.0", "vitest": "^3.0.0"

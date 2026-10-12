@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { checkArchitecture, type ArchRules } from "../src/architecture.js";
+import { calibrate, fewShot, type CalibrationCase } from "../src/calibration.js";
 import { Harness, defaultConfig, parseJSON, type Progress } from "../src/harness.js";
 import { ScriptedLLM } from "../src/llm.js";
 
@@ -178,5 +179,46 @@ describe("architecture rules", () => {
     expect(p.done.a).toBe("pass");
     expect(p.attempts.a).toBe(2);
     expect(seen[1]!.join("\n")).toMatch(/ARCH routes-independent: src\/routes\/a\.ts -> src\/routes\/b\.ts/);
+  });
+});
+
+describe("evaluator calibration", () => {
+  const input = (feature: string, ok: boolean) =>
+    JSON.stringify({ feature, gate: { ok, output: ok ? "exit=0" : "exit=1\nFAIL tests/x.test.ts > double booking" } });
+  const cases: CalibrationCase[] = [
+    { id: "good", input: input("a", true), human: { pass: true, scores: { functionality: 9, craft: 8 }, why: "works" } },
+    { id: "broken", input: input("b", false), human: { pass: false, scores: { functionality: 2, craft: 6 }, why: "check failed" } },
+  ];
+
+  it("reports false approvals from a lenient judge, with leave-one-out few-shot", async () => {
+    const systems: string[] = [];
+    const lenient = async (_role: string, system: string) => {
+      systems.push(system);
+      return JSON.stringify({ scores: { functionality: 9, craft: 8 }, bugs: [] });
+    };
+    const r = await calibrate(lenient, "judge", cases, { functionality: 7, craft: 6 }, parseJSON);
+    expect(r.falseApprovals).toEqual(["broken"]);
+    expect(r.agreement).toBe(0.5);
+    expect(systems[0]).toContain('feature "b"'); // grading "good" shows only the other case
+    expect(systems[0]).not.toContain('feature "a"');
+  });
+
+  it("puts human grades into the evaluator prompt during a run", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "h-"));
+    let system = "";
+    const llm = new ScriptedLLM({
+      planner: () => JSON.stringify({ features: ["a"] }),
+      contract: () => JSON.stringify({ done: "", check: ["true"] }),
+      generator: () => JSON.stringify({ files: { "a.txt": "x" } }),
+      evaluator: () => JSON.stringify({ scores: { functionality: 9, craft: 9 }, bugs: [] }),
+    });
+    const spy = async (role: Parameters<typeof llm.call>[0], s: string, u: string) => {
+      if (role === "evaluator") system = s;
+      return llm.call(role, s, u);
+    };
+    await new Harness(spy, { ...defaultConfig(dir), calibration: cases }).run("x");
+    expect(fewShot([])).toBe("");
+    expect(system).toMatch(/human grade: FAIL functionality=2 craft=6\. Why: check failed/);
+    expect(system).toContain("FAIL tests/x.test.ts > double booking");
   });
 });

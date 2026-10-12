@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "demo": "tsx harness/src/cli.ts room-booking --approve",
     "demo:live": "tsx harness/src/cli.ts room-booking --llm anthropic",
+    "calibrate": "tsx harness/src/calibrate.ts room-booking",
     "check-key": "tsx harness/src/check-key.ts"
   },
   "devDependencies": {

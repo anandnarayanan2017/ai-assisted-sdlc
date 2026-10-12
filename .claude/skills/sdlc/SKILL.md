@@ -1,6 +1,6 @@
 ---
 name: sdlc
-description: Run this repo's AI-assisted SDLC pipeline (Planner -> Contract -> Generator -> Check -> Evaluator -> Human gate) and report the outcome. Use when asked to run the pipeline, the demo, a live/real-model run, a smoke run, resume or approve a run, run the harness tests, or explain what a run did. Args - test | demo (default) | live [--max-features n] [--model id] | resume [--approve] | inspect.
+description: Run this repo's AI-assisted SDLC pipeline (Planner -> Contract -> Generator -> Check -> Evaluator -> Human gate) and report the outcome. Use when asked to run the pipeline, the demo, a live/real-model run, a smoke run, resume or approve a run, run the harness tests, run evaluator calibration, or explain what a run did. Args - test | demo (default) | live [--max-features n] [--model id] | resume [--approve] | calibrate | inspect.
 ---
 
 # /sdlc: run the delivery pipeline
@@ -18,6 +18,7 @@ gets up to 3 attempts. The check result outranks the evaluator's opinion.
 | `demo` (default) | `npm run demo`: replays recorded model turns for 6 sprints and ends `RELEASED` | free, ~1 min |
 | `live` | `npm run demo:live` with the real Anthropic API. Pass `--max-features 2` for a smoke run | **spends API credits** |
 | `resume [--approve]` | `npm run demo:live -- --resume [--approve]`: continues from `.harness/progress.json` | API credits only if sprints remain |
+| `calibrate [--llm anthropic]` | `npm run calibrate`: grades the human-labelled evaluator cases and reports agreement and false approvals. Exit 1 means the judge approved something a human failed | free scripted; a few API calls live |
 | `inspect` | Runs nothing. Summarises the last run from `examples/room-booking/workspace/` | free |
 
 Before a `live` run, confirm with the user unless they already asked for a live run explicitly, because it costs
@@ -70,6 +71,8 @@ Reply with:
    whether the retry fixed them. Never edit `architecture.json` to make a run pass; it is the architect's file.
 4. any sprint where the evaluator scored the work as passing but the check failed. That disagreement is the
    pattern the harness is designed to catch.
+   Also report `PROBE FAIL` lines: the evaluator's live Playwright probes (`.harness/probes/NN-aK/`) found a
+   runtime defect the contract tests missed.
 5. for live runs, the number of model calls and the next command to run (`resume --approve` once the user has reviewed
    the result, or `--model <id>` to retry a `BLOCKED` run with a different model)
 

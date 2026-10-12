@@ -1,6 +1,6 @@
 /**
  * Usage: tsx harness/src/cli.ts <example> [--approve] [--resume] [--llm scripted|anthropic]
- *        [--model <id>] [--max-features <n>]
+ *        [--model <id>] [--max-features <n>] [--no-probe] [--no-calibration]
  * Every model call is saved to <workspace>/.harness/calls/ so the exact agent hand-offs can be read back.
  */
 import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
@@ -15,7 +15,7 @@ const name = args.find((a) => !a.startsWith("--"));
 const flag = (f: string) => args.includes(f);
 const opt = (f: string, d: string) => (args.includes(f) ? (args[args.indexOf(f) + 1] ?? d) : d);
 if (!name) {
-  console.error("usage: cli <example> [--approve] [--resume] [--llm scripted|anthropic] [--model id] [--max-features n]");
+  console.error("usage: cli <example> [--approve] [--resume] [--llm scripted|anthropic] [--model id] [--max-features n] [--no-probe] [--no-calibration]");
   process.exit(2);
 }
 
@@ -51,6 +51,8 @@ const llm: LLM = async (role, system, user) => {
 const maxFeatures = Number(opt("--max-features", "0")) || undefined;
 const cfg = {
   ...defaultConfig(workdir), maxFeatures, seedDir: ex.seedDir, env: ex.env, architecture: ex.architecture, onEvent: print,
+  app: flag("--no-probe") ? undefined : ex.app,
+  calibration: flag("--no-calibration") ? undefined : ex.calibration,
 };
 const summary: string[] = [];
 
@@ -78,6 +80,10 @@ function print(e: HarnessEvent) {
       summary.push(`${e.feature}: attempt ${e.attempt} ${e.pass ? "pass" : "fail"}`);
       break;
     }
+    case "probe":
+      if (e.ran) console.log(`  PROBE ${e.ok ? "PASS" : "FAIL"} (evaluator's Playwright tests against the running app)`);
+      for (const l of (e.failures as string[]) ?? []) console.log(`    ${l.slice(0, 150)}`);
+      break;
     case "retry":
       console.log("  -> failures fed back to the generator");
       break;

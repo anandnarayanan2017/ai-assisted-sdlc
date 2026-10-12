@@ -76,6 +76,11 @@ Six sprints run in order. Two are built wrongly on the first attempt and repaire
 - Acceptance tests belong to the contract. The harness restores them before every check, so the generator cannot weaken them.
 - No shared context window. State lives in `.harness/` (spec, contracts, progress) and git, so a crashed run resumes.
 - A sprint that exhausts its retries blocks the run and escalates instead of building on a broken base.
+- The evaluator tests the running app, not just the diff: after a passing check the harness starts the app and runs
+  the evaluator's own Playwright tests against it (`PROBE PASS/FAIL`). Probes inform the score; they are not a gate.
+- The judge is calibrated against humans: `examples/<name>/calibration.json` holds real evaluator inputs with human
+  grades. They are few-shot examples in every evaluator prompt, and `npm run calibrate` measures agreement and
+  false approvals (scripted run: it catches the lenient 9/10 on sprint 5, exit 1).
 - Human approval is required to release (`--approve` supplies it in the demo).
 
 ## Architecture
@@ -98,11 +103,14 @@ flowchart LR
 |---|---|
 | `harness/src/harness.ts` | Orchestrator: roles, check gate, test protection, resume |
 | `harness/src/architecture.ts` | Architecture-rules check (import graph vs. `architecture.json`) |
+| `harness/src/probe.ts` | Starts the built app and runs the evaluator's Playwright probes against it |
+| `harness/src/calibration.ts`, `calibrate.ts` | Few-shot calibration of the evaluator and the agreement report (`npm run calibrate`) |
 | `harness/src/llm.ts` | Anthropic client (fetch, no SDK) and `ScriptedLLM` |
 | `harness/src/cli.ts` | `tsx harness/src/cli.ts <example> [--approve] [--resume] [--llm anthropic]` |
 | `harness/test/` | Retry, check-beats-judge, block, approve, tamper-restore, path-escape, resume |
 | `examples/room-booking/architecture.json` | The architect's rules for the example: independent routes, no upward imports, pool injected from `server.ts`, approved packages |
-| `examples/room-booking/script/` | Recorded planner, contract tests, and generator attempts per sprint |
+| `examples/room-booking/calibration.json` | Five human-graded evaluator cases from a real run (two are failures) |
+| `examples/room-booking/script/` | Recorded planner, contract tests, generator attempts and evaluator probes per sprint |
 | `examples/room-booking/seed/` | Workspace scaffold (tsconfig, vitest config, scripts) |
 | `Dockerfile`, `docker-compose.yml` | App image and the `db` / `demo` / `unit` / `live` services |
 
@@ -111,5 +119,5 @@ one commit per attempt).
 
 ## Status
 
-v0.2. Next: Playwright evaluator for UI work, few-shot calibration of the evaluator, per-phase cost and time
-tracking, ablation switches (see section 8 of the architecture doc).
+v0.3. Next: per-phase cost and time tracking, ablation switches (see section 8 of the architecture doc), browser
+(`page`) probes once an example has a UI.

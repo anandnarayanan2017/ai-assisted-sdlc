@@ -10,6 +10,8 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { checkArchitecture, formatViolations, type ArchRules } from "./architecture.js";
+import { fewShot, type CalibrationCase } from "./calibration.js";
+import { runProbes, type AppConfig, type ProbeResult } from "./probe.js";
 import type { LLM } from "./llm.js";
 
 const sh = promisify(execFile);
@@ -28,9 +30,16 @@ export const PROMPTS = {
     "You are the GENERATOR. Implement ONLY the given feature so the contract check passes. Reply JSON " +
     '{"files": {"relative/path": "full new content"}}. `workspace` holds the current project files, including the ' +
     "contract tests. Fix every QA bug listed. Never touch contract tests. Reply with the JSON only.",
+  prober:
+    "You are the EVALUATOR's QA prober. The feature's contract tests already pass; the app is running at `baseURL`. " +
+    "Write a few Playwright tests (@playwright/test) that use it like a real client and hunt for what the contract " +
+    "missed: edge cases, bad input, auth boundaries, ordering, error shapes. Use the `request` fixture for HTTP " +
+    "APIs and `page` only when there is a UI; use relative URLs (baseURL is configured). Assert what a correct app " +
+    'must do. Reply JSON {"files": {"name.spec.ts": "content"}} and nothing else.',
   evaluator:
     "You are a skeptical EVALUATOR. Do not approve work with unresolved defects, and do not trust a " +
-    "generator's claims; judge the changed files and the check output. Reply JSON " +
+    "generator's claims; judge the changed files, the check output and, when present, the live probe results " +
+    "(a failing probe is a defect unless the probe itself is wrong). Reply JSON " +
     '{"scores": {"functionality": 0-10, "craft": 0-10}, "bugs": ["..."]} and nothing else.',
 } as const;
 
@@ -58,6 +67,10 @@ export interface Config {
   env?: Record<string, string>;
   /** Architect-owned rules, checked with the contract check; violations fail the sprint. */
   architecture?: ArchRules;
+  /** How to start the built app; when set, the evaluator probes it live with Playwright. */
+  app?: AppConfig;
+  /** Human-graded evaluator inputs, given to the evaluator as few-shot examples. */
+  calibration?: CalibrationCase[];
   onEvent?: (e: HarnessEvent) => void;
 }
 
@@ -67,7 +80,7 @@ export const defaultConfig = (workdir: string): Config => ({
 
 /** Failing-test / compiler-error lines from check output (for QA feedback and logs). */
 export function failureLines(output: string, max = 6): string[] {
-  const hits = output.split("\n").map((l) => l.trim()).filter((l) => /^(FAIL|AssertionError|Error:|TypeError|ARCH )|error TS\d+/.test(l));
+  const hits = output.split("\n").map((l) => l.trim()).filter((l) => /^(FAIL|AssertionError|Error:|TypeError|ARCH |✘)|error TS\d+/.test(l));
   return [...new Set(hits)].slice(0, max);
 }
 
@@ -211,10 +224,23 @@ export class Harness {
     };
   }
 
+  /** The evaluator's own exploratory tests against the running app (only when the check passed). */
+  private async probe(index: number, feature: string, attempt: number, c: Contract): Promise<ProbeResult | undefined> {
+    if (!this.cfg.app) return undefined;
+    const raw = await this.llm("prober", PROMPTS.prober, JSON.stringify({
+      feature, contract: { done: c.done }, baseURL: `http://127.0.0.1:${this.cfg.app.port}`, workspace: await this.snapshot(),
+    }));
+    const files = parseJSON<{ files?: Record<string, string> }>(raw).files ?? {};
+    const r = await runProbes(this.w, `.harness/probes/${slug(index)}-a${attempt}`, files, this.cfg.app, this.cfg.env);
+    this.emit({ type: "probe", feature, attempt, ran: r.ran, ok: r.ok, failures: r.ok ? [] : failureLines(r.output) });
+    return r;
+  }
+
   private async evaluate(feature: string, attempt: number, c: Contract, g: GateResult,
-    changed: Record<string, string>): Promise<Evaluation> {
-    const raw = await this.llm("evaluator", PROMPTS.evaluator,
-      JSON.stringify({ feature, attempt, contract: { done: c.done }, changed, gate: { ok: g.ok, output: g.output.slice(-6000) } }));
+    changed: Record<string, string>, probes?: ProbeResult): Promise<Evaluation> {
+    const raw = await this.llm("evaluator", PROMPTS.evaluator + fewShot(this.cfg.calibration ?? []),
+      JSON.stringify({ feature, attempt, contract: { done: c.done }, changed, gate: { ok: g.ok, output: g.output.slice(-6000) },
+        ...(probes?.ran ? { probes: { ok: probes.ok, output: probes.output.slice(-4000) } } : {}) }));
     const e = parseJSON<Partial<Evaluation>>(raw);
     return { scores: e.scores ?? {}, bugs: e.bugs ?? [] };
   }
@@ -250,7 +276,8 @@ export class Harness {
         p.attempts[feature] = attempt;
         const changed = await this.generate(feature, contract, attempt, bugs);
         const g = await this.verify(contract);
-        const e = await this.evaluate(feature, attempt, contract, g, changed);
+        const probes = g.ok ? await this.probe(i, feature, attempt, contract) : undefined;
+        const e = await this.evaluate(feature, attempt, contract, g, changed, probes);
         const ok = this.passes(g, e);
         this.emit({ type: "verdict", feature, attempt, gateOk: g.ok, scores: e.scores, pass: ok, failures: g.ok ? [] : failureLines(g.output), violations: g.violations });
         if (ok) { p.done[feature] = "pass"; break; }

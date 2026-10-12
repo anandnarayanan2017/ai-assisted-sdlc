@@ -1,8 +1,10 @@
 /** Room-booking demo: a scripted "model" replays recorded planner/contract/generator/evaluator turns. */
+import { existsSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import pg from "pg";
 import type { ArchRules } from "../../harness/src/architecture.js";
+import type { CalibrationCase } from "../../harness/src/calibration.js";
 import type { Example } from "../../harness/src/example.js";
 import { failureLines } from "../../harness/src/harness.js";
 import { ScriptedLLM } from "../../harness/src/llm.js";
@@ -54,6 +56,9 @@ const example: Example = {
   seedDir: path.join(here, "seed"),
   env: { DATABASE_URL },
   architecture: JSON.parse(await readFile(path.join(here, "architecture.json"), "utf8")) as ArchRules,
+  // The evaluator starts the built API and probes it with Playwright after each passing check.
+  app: { start: ["npx", "tsx", "src/server.ts"], port: 3100, ready: "/health" },
+  calibration: JSON.parse(await readFile(path.join(here, "calibration.json"), "utf8")) as CalibrationCase[],
 
   async reset() {
     const pool = new pg.Pool({ connectionString: DATABASE_URL });
@@ -85,16 +90,24 @@ const example: Example = {
         return JSON.stringify({ files });
       },
 
+      // Recorded probes live in script/NN/probes/; sprints without any are not probed.
+      prober: async (user) => {
+        const { feature } = JSON.parse(user) as { feature: string };
+        const dir = path.join((await byTitle(feature)).dir, "probes");
+        return JSON.stringify({ files: existsSync(dir) ? await tree(dir) : {} });
+      },
+
       evaluator: async (user) => {
-        const { feature, attempt, gate } = JSON.parse(user) as {
-          feature: string; attempt: number; gate: { ok: boolean; output: string };
+        const { feature, attempt, gate, probes } = JSON.parse(user) as {
+          feature: string; attempt: number; gate: { ok: boolean; output: string }; probes?: { ok: boolean; output: string };
         };
         const s = await byTitle(feature);
-        const approves = gate.ok || (s.lenientAttempts ?? []).includes(attempt); // a lenient judge rubber-stamps
+        const live = gate.ok && (probes?.ok ?? true);
+        const approves = live || (s.lenientAttempts ?? []).includes(attempt); // a lenient judge rubber-stamps
         return JSON.stringify(
           approves
             ? { scores: { functionality: 9, craft: 8 }, bugs: [] }
-            : { scores: { functionality: 3, craft: 6 }, bugs: failureLines(gate.output) },
+            : { scores: { functionality: 3, craft: 6 }, bugs: failureLines(gate.ok ? (probes?.output ?? "") : gate.output) },
         );
       },
     }).call;

@@ -2,6 +2,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import pg from "pg";
+import type { ArchRules } from "../../harness/src/architecture.js";
 import type { Example } from "../../harness/src/example.js";
 import { failureLines } from "../../harness/src/harness.js";
 import { ScriptedLLM } from "../../harness/src/llm.js";
@@ -52,6 +53,7 @@ const example: Example = {
     "Postgres 16 at process.env.DATABASE_URL.",
   seedDir: path.join(here, "seed"),
   env: { DATABASE_URL },
+  architecture: JSON.parse(await readFile(path.join(here, "architecture.json"), "utf8")) as ArchRules,
 
   async reset() {
     const pool = new pg.Pool({ connectionString: DATABASE_URL });

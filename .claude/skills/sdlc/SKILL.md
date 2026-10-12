@@ -66,9 +66,11 @@ Reply with:
 1. the status (`RELEASED` / `AWAITING_APPROVAL` / `BLOCKED`) and a sprint table (sprint, attempts, outcome)
 2. each retry: what attempt 1 got wrong (the failing test names from the CHECK FAIL lines) and what the retry
    changed (`git -C examples/room-booking/workspace show <sha> --stat`)
-3. any sprint where the evaluator scored the work as passing but the check failed. That disagreement is the
+3. any `ARCH <rule>` lines (architecture-rule violations from `examples/room-booking/architecture.json`) and
+   whether the retry fixed them. Never edit `architecture.json` to make a run pass; it is the architect's file.
+4. any sprint where the evaluator scored the work as passing but the check failed. That disagreement is the
    pattern the harness is designed to catch.
-4. for live runs, the number of model calls and the next command to run (`resume --approve` once the user has reviewed
+5. for live runs, the number of model calls and the next command to run (`resume --approve` once the user has reviewed
    the result, or `--model <id>` to retry a `BLOCKED` run with a different model)
 
 If the run is `BLOCKED`, read the last generator and evaluator transcripts for that sprint and say why it failed.

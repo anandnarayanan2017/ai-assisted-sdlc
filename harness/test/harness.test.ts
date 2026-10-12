@@ -1,7 +1,8 @@
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { checkArchitecture, type ArchRules } from "../src/architecture.js";
 import { Harness, defaultConfig, parseJSON, type Progress } from "../src/harness.js";
 import { ScriptedLLM } from "../src/llm.js";
 
@@ -122,5 +123,60 @@ describe("agent context", () => {
     const { h, cfg } = await make({ attempts: [GOOD] });
     cfg.maxFeatures = 1;
     expect((await h.run("todo")).features).toEqual(["add"]);
+  });
+});
+
+describe("architecture rules", () => {
+  const rules: ArchRules = {
+    root: "src",
+    allowedPackages: ["express", "pg"],
+    rules: [
+      { name: "routes-independent", from: "^src/routes/", forbid: "^src/routes/", because: "decoupled routes" },
+      { name: "pool-at-root", from: "^src/(?!server\\.ts$)", forbid: "^pg$", allowTypeOnly: true, because: "inject the pool" },
+    ],
+  };
+  async function ws(files: Record<string, string>) {
+    const dir = await mkdtemp(path.join(tmpdir(), "arch-"));
+    for (const [rel, content] of Object.entries(files)) {
+      await mkdir(path.dirname(path.join(dir, rel)), { recursive: true });
+      await writeFile(path.join(dir, rel), content);
+    }
+    return dir;
+  }
+
+  it("flags forbidden imports, unapproved packages and runtime imports of type-only modules", async () => {
+    const dir = await ws({
+      "src/server.ts": 'import pg from "pg";\nimport { a } from "./routes/a.js";',
+      "src/routes/a.ts": 'import type { Pool } from "pg";\nimport { b } from "./b.js";\nexport const a = 1;',
+      "src/routes/b.ts": 'import pg from "pg";\nconst m = await import("lodash/fp");\nexport const b = 1;',
+      "src/routes/b.test.ts": 'import { a } from "./a.js";',
+    });
+    const v = (await checkArchitecture(dir, rules)).map((x) => `${x.rule} ${x.file} -> ${x.target}`).sort();
+    expect(v).toEqual([
+      "allowed-packages src/routes/b.ts -> lodash",
+      "pool-at-root src/routes/b.ts -> pg",
+      "routes-independent src/routes/a.ts -> src/routes/b.ts",
+    ]);
+  });
+
+  it("fails the sprint and feeds the violation back to the generator", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "h-"));
+    const seen: string[][] = [];
+    const llm = new ScriptedLLM({
+      planner: () => JSON.stringify({ features: ["a"] }),
+      contract: () => JSON.stringify({ done: "", check: ["true"] }),
+      generator: (u) => {
+        const { attempt, qa_bugs, architecture } = JSON.parse(u) as { attempt: number; qa_bugs: string[]; architecture: ArchRules };
+        expect(architecture.rules).toHaveLength(2); // rules are given up front, not only on failure
+        seen.push(qa_bugs);
+        const imp = attempt === 1 ? 'import { b } from "./b.js";' : 'import { b } from "../shared.js";';
+        return JSON.stringify({ files: { "src/routes/a.ts": imp, "src/routes/b.ts": "", "src/shared.ts": "" } });
+      },
+      evaluator: () => JSON.stringify({ scores: { functionality: 9, craft: 9 }, bugs: [] }),
+    });
+    const p = await new Harness(llm.call, { ...defaultConfig(dir), architecture: rules }).run("x");
+    expect(p.done.a).toBe("pass");
+    expect(p.attempts.a).toBe(2);
+    expect(seen[1]!.join("\n")).toMatch(/ARCH routes-independent: src\/routes\/a\.ts -> src\/routes\/b\.ts/);
   });
 });

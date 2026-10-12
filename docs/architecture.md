@@ -130,7 +130,9 @@ stateDiagram-v2
 flowchart LR
     A[Generator output] --> B{Check command<br/>exit 0?}
     B -- no --> F[FAIL<br/>bugs = gate output]
-    B -- yes --> C{LLM scores<br/>all >= thresholds?}
+    B -- yes --> AR{Architecture rules<br/>no violations?}
+    AR -- no --> F
+    AR -- yes --> C{LLM scores<br/>all >= thresholds?}
     C -- no --> G[FAIL<br/>bugs = evaluator findings]
     C -- yes --> D[PASS]
     F --> R{attempts left?}
@@ -141,6 +143,12 @@ flowchart LR
 
 The deterministic gate comes first and **cannot be overridden by the evaluator**: a 10/10 from the
 LLM does not pass failing code (unit test: *a deterministic check overrides a lenient evaluator*; live demo: sprint 5, attempt 1).
+
+Architecture rules are part of the same deterministic gate. The architect writes them once per project
+(`examples/<name>/architecture.json`: allowed import directions, the approved package list) and the harness checks
+the import graph after every generator attempt (`harness/src/architecture.ts`). The file sits outside the workspace,
+so no agent can relax it. The generator sees the rules from attempt 1, and violations come back as
+`ARCH <rule>: <file> -> <target> (<reason>)` lines (unit test: *fails the sprint and feeds the violation back*).
 
 ## 5. Where this sits in the SDLC
 

@@ -49,7 +49,9 @@ const llm: LLM = async (role, system, user) => {
   return reply;
 };
 const maxFeatures = Number(opt("--max-features", "0")) || undefined;
-const cfg = { ...defaultConfig(workdir), maxFeatures, seedDir: ex.seedDir, env: ex.env, onEvent: print };
+const cfg = {
+  ...defaultConfig(workdir), maxFeatures, seedDir: ex.seedDir, env: ex.env, architecture: ex.architecture, onEvent: print,
+};
 const summary: string[] = [];
 
 function print(e: HarnessEvent) {
@@ -69,6 +71,7 @@ function print(e: HarnessEvent) {
       const sc = Object.entries(e.scores as Record<string, number>).map(([k, v]) => `${k}=${v}`).join(" ");
       console.log(`  CHECK ${e.gateOk ? "PASS" : "FAIL"} | EVALUATOR ${sc} => ${e.pass ? "PASS" : "FAIL"}`);
       if (e.gateOk && !e.pass) console.log("    (check passed but scores below threshold)");
+      if ((e.violations as string[]).length) console.log(`    architecture: ${(e.violations as string[]).length} violation(s)`);
       if (!e.gateOk && (e.scores as Record<string, number>).functionality! >= 7)
         console.log("    !! evaluator approved, but the deterministic check failed: the check wins");
       for (const l of (e.failures as string[]) ?? []) console.log(`    ${l.slice(0, 150)}`);

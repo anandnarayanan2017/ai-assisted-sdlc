@@ -1,0 +1,10 @@
+# zod 3 — condensed reference
+
+- import { z } from "zod";
+- Schema: z.object({ email: z.string().email(), name: z.string().min(1), capacity: z.number().int().positive() })
+- Parse without throwing: const r = Schema.safeParse(req.body); if (!r.success) return res.status(400).json({ error: r.error.issues[0]?.message });
+- Query strings are strings: z.coerce.number().int() or z.string().datetime({ offset: true }) then new Date(v).
+- Cross-field checks: .refine((v) => v.endAt > v.startAt, { message: "endAt must be after startAt" }).
+- Optional with default: z.coerce.number().int().min(1).default(1).
+- Inferred type: type Room = z.infer<typeof Schema>.
+- .strict() rejects unknown keys; default behaviour strips them.

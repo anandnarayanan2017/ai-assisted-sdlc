@@ -2,27 +2,82 @@
 export type Role = "planner" | "contract" | "generator" | "prober" | "evaluator";
 export type LLM = (role: Role, system: string, user: string) => Promise<string>;
 
+/** Tokens reported by the provider for one call (used for benchmark cost and efficiency columns). */
+export interface Usage { inputTokens: number; outputTokens: number }
+export interface CallOptions {
+  /** Omit to use the provider default (some reasoning models reject anything else). */
+  temperature?: number;
+  onUsage?: (u: Usage) => void;
+}
+
+/** Keys pasted into .env / compose often carry quotes, CR/LF or spaces, which APIs reject as 401. */
+export const cleanKey = (raw: string | undefined) => (raw ?? "").trim().replace(/^["']|["']$/g, "").trim();
+
+/** POST JSON with backoff on 429 / 5xx; throws with the provider's error body otherwise. */
+async function post(url: string, headers: Record<string, string>, body: unknown, vendor: string): Promise<unknown> {
+  for (let attempt = 1; ; attempt++) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+    if ((res.status === 429 || res.status >= 500) && attempt < 5) {
+      await new Promise((r) => setTimeout(r, 2 ** attempt * 1000));
+      continue;
+    }
+    if (!res.ok) throw new Error(`${vendor} API ${res.status}: ${await res.text()}`);
+    return res.json();
+  }
+}
+
 /** Minimal Messages API client over fetch (no SDK dependency). */
-export function anthropicLLM(model = "claude-sonnet-5-5", maxTokens = 16000): LLM {
-  // Keys pasted into .env / compose often carry quotes, CR/LF or spaces, which the API rejects as 401.
-  const key = (process.env.ANTHROPIC_API_KEY ?? "").trim().replace(/^["']|["']$/g, "").trim();
+export function anthropicLLM(
+  model = "claude-sonnet-5-5", maxTokens = 16000, opts: CallOptions & { apiKey?: string } = {},
+): LLM {
+  const key = cleanKey(opts.apiKey ?? process.env.ANTHROPIC_API_KEY);
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
   return async (_role, system, user) => {
-    for (let attempt = 1; ; attempt++) {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-        body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] }),
-      });
-      if ((res.status === 429 || res.status >= 500) && attempt < 5) {
-        await new Promise((r) => setTimeout(r, 2 ** attempt * 1000));
-        continue;
-      }
-      if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${await res.text()}`);
-      const body = (await res.json()) as { content: { type: string; text?: string }[]; stop_reason?: string };
-      if (body.stop_reason === "max_tokens") throw new Error(`reply truncated at max_tokens=${maxTokens}`);
-      return body.content.map((c) => c.text ?? "").join("");
-    }
+    const body = (await post("https://api.anthropic.com/v1/messages",
+      { "x-api-key": key, "anthropic-version": "2023-06-01" },
+      { model, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }],
+        ...(opts.temperature === undefined ? {} : { temperature: opts.temperature }) },
+      "Anthropic")) as {
+      content: { type: string; text?: string }[]; stop_reason?: string;
+      usage?: { input_tokens: number; output_tokens: number };
+    };
+    opts.onUsage?.({ inputTokens: body.usage?.input_tokens ?? 0, outputTokens: body.usage?.output_tokens ?? 0 });
+    if (body.stop_reason === "max_tokens") throw new Error(`reply truncated at max_tokens=${maxTokens}`);
+    return body.content.map((c) => c.text ?? "").join("");
+  };
+}
+
+/**
+ * OpenAI Chat Completions wire format. Most vendors and local servers speak it (OpenAI, Google Gemini's
+ * OpenAI-compatible endpoint, Mistral, DeepSeek, Groq, Together, OpenRouter, Azure OpenAI, vLLM, Ollama),
+ * so one adapter plus a base URL covers them.
+ */
+export function openAICompatibleLLM(o: {
+  baseUrl: string; model: string; apiKey?: string; maxTokens?: number;
+  /** OpenAI reasoning models want max_completion_tokens; most other servers want max_tokens. */
+  maxTokensParam?: "max_tokens" | "max_completion_tokens";
+} & CallOptions): LLM {
+  const maxTokens = o.maxTokens ?? 16000;
+  const url = `${o.baseUrl.replace(/\/+$/, "")}/chat/completions`;
+  const headers: Record<string, string> = o.apiKey ? { authorization: `Bearer ${o.apiKey}` } : {};
+  return async (_role, system, user) => {
+    const body = (await post(url, headers, {
+      model: o.model,
+      messages: [{ role: "system", content: system }, { role: "user", content: user }],
+      [o.maxTokensParam ?? "max_tokens"]: maxTokens,
+      ...(o.temperature === undefined ? {} : { temperature: o.temperature }),
+    }, `${o.baseUrl}`)) as {
+      choices?: { message?: { content?: string | null }; finish_reason?: string }[];
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+    };
+    o.onUsage?.({ inputTokens: body.usage?.prompt_tokens ?? 0, outputTokens: body.usage?.completion_tokens ?? 0 });
+    const choice = body.choices?.[0];
+    if (choice?.finish_reason === "length") throw new Error(`reply truncated at ${o.maxTokensParam ?? "max_tokens"}=${maxTokens}`);
+    return choice?.message?.content ?? "";
   };
 }
 

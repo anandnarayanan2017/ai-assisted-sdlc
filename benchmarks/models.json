@@ -1,0 +1,38 @@
+{
+  "$comment": "Models under comparison. Keys come from the env var named in apiKeyEnv (never put a key here). Fill price from each vendor's pricing page (USD per million tokens) to get the cost column; null shows n/a. Check model ids against each vendor's current model list before a run.",
+  "models": [
+    { "id": "reference", "provider": "reference", "vendor": "baseline",
+      "notes": "Canonical solutions (codegen) / recorded turns (sdlc). Must score 100% on codegen: proves the tests and the sandbox work." },
+    { "id": "empty", "provider": "empty", "vendor": "baseline",
+      "notes": "Returns a stub. Must score 0%: proves the tests cannot be passed by doing nothing." },
+
+    { "id": "claude-opus-5-5", "provider": "anthropic", "vendor": "Anthropic", "model": "claude-opus-5-5",
+      "apiKeyEnv": "ANTHROPIC_API_KEY", "price": { "inputPerMTok": null, "outputPerMTok": null } },
+    { "id": "claude-sonnet-5-5", "provider": "anthropic", "vendor": "Anthropic", "model": "claude-sonnet-5-5",
+      "apiKeyEnv": "ANTHROPIC_API_KEY", "price": { "inputPerMTok": null, "outputPerMTok": null } },
+    { "id": "claude-haiku-5-5", "provider": "anthropic", "vendor": "Anthropic", "model": "claude-haiku-5-5",
+      "apiKeyEnv": "ANTHROPIC_API_KEY", "price": { "inputPerMTok": null, "outputPerMTok": null } },
+
+    { "id": "openai-gpt", "provider": "openai-compatible", "vendor": "OpenAI", "model": "gpt-5",
+      "baseUrl": "https://api.openai.com/v1", "apiKeyEnv": "OPENAI_API_KEY", "maxTokensParam": "max_completion_tokens",
+      "price": { "inputPerMTok": null, "outputPerMTok": null },
+      "notes": "Reasoning models accept only the default temperature: run with --temperature default." },
+    { "id": "google-gemini", "provider": "openai-compatible", "vendor": "Google", "model": "gemini-2.5-pro",
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai", "apiKeyEnv": "GEMINI_API_KEY",
+      "price": { "inputPerMTok": null, "outputPerMTok": null } },
+    { "id": "mistral-large", "provider": "openai-compatible", "vendor": "Mistral", "model": "mistral-large-latest",
+      "baseUrl": "https://api.mistral.ai/v1", "apiKeyEnv": "MISTRAL_API_KEY",
+      "price": { "inputPerMTok": null, "outputPerMTok": null } },
+    { "id": "deepseek-chat", "provider": "openai-compatible", "vendor": "DeepSeek", "model": "deepseek-chat",
+      "baseUrl": "https://api.deepseek.com/v1", "apiKeyEnv": "DEEPSEEK_API_KEY",
+      "price": { "inputPerMTok": null, "outputPerMTok": null } },
+    { "id": "openrouter", "provider": "openai-compatible", "vendor": "OpenRouter", "model": "meta-llama/llama-3.3-70b-instruct",
+      "baseUrl": "https://openrouter.ai/api/v1", "apiKeyEnv": "OPENROUTER_API_KEY",
+      "price": { "inputPerMTok": null, "outputPerMTok": null },
+      "notes": "One key, many vendors' models: change model to any OpenRouter model id." },
+    { "id": "ollama-local", "provider": "openai-compatible", "vendor": "Local (Ollama)", "model": "qwen2.5-coder:7b",
+      "baseUrl": "http://localhost:11434/v1", "maxTokens": 4096,
+      "price": { "inputPerMTok": 0, "outputPerMTok": 0 },
+      "notes": "Open-weights model on your own machine; from Docker use http://host.docker.internal:11434/v1." }
+  ]
+}

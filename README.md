@@ -26,6 +26,37 @@ Without Docker (needs Node 22 and a Postgres at `DATABASE_URL`): `npm ci && npm 
 In Claude Code, `/sdlc [test|demo|live|resume|inspect]` runs any of these and summarises the result
 ([.claude/skills/sdlc/SKILL.md](.claude/skills/sdlc/SKILL.md)). Without Docker, it starts a local Postgres for you.
 
+## Compare models and vendors (benchmark)
+
+Same work, different LLMs, scored only by executing hidden tests. Any vendor with an Anthropic or OpenAI-compatible
+API works (OpenAI, Google Gemini, Mistral, DeepSeek, OpenRouter, Ollama/vLLM); models are entries in
+[benchmarks/models.json](benchmarks/models.json), keys come from `.env`, a model without a key is skipped.
+
+```bash
+# Offline sanity run: reference must score 100%, empty 0% (also runs in CI).
+docker compose --profile bench run --rm bench
+
+# codegen: 12 HumanEval-style tasks, pass@1 with 95% CI, latency, tokens, cost. Cents per model.
+docker compose --profile bench run --rm bench npm run bench -- --suite codegen \
+  --models reference,empty,claude-sonnet-5-5,openai-gpt,google-gemini
+#   pass@k: add --samples 5 --k 1,5   (temperature 0.8, HumanEval convention)
+
+# sdlc: the 6-sprint room-booking build with fixed contracts; only the generator role is the model under test.
+docker compose --profile bench run --rm bench npm run bench -- --suite sdlc --models reference,claude-sonnet-5-5
+```
+
+Reports land in `benchmarks/results/<suite>-<timestamp>/` (`report.md`, `summary.json`, raw `results.jsonl`, and for
+sdlc every transcript); `--publish` copies the leaderboard to `docs/generated/`. Methodology and fairness rules:
+[docs/design-docs/benchmark-methodology.md](docs/design-docs/benchmark-methodology.md).
+
+## Knowledge base for agents
+
+[AGENTS.md](AGENTS.md) is the short map every coding agent reads first (Claude Code loads it through `CLAUDE.md`);
+[ARCHITECTURE.md](ARCHITECTURE.md) maps the layers; `docs/` is the system of record: design docs, product specs,
+execution plans, tech-debt tracker, generated schema, condensed library references and the quality, reliability
+and security bars. `npm run docs:check` (also part of `npm test`) fails on broken links, unindexed docs, plans whose
+status disagrees with their folder, and stale generated files.
+
 ## Live run with a real model
 
 The scripted run replays recorded model turns, so it is free and deterministic. The live run sends the same flow to
@@ -105,8 +136,12 @@ flowchart LR
 | `harness/src/architecture.ts` | Architecture-rules check (import graph vs. `architecture.json`) |
 | `harness/src/probe.ts` | Starts the built app and runs the evaluator's Playwright probes against it |
 | `harness/src/calibration.ts`, `calibrate.ts` | Few-shot calibration of the evaluator and the agreement report (`npm run calibrate`) |
-| `harness/src/llm.ts` | Anthropic client (fetch, no SDK) and `ScriptedLLM` |
-| `harness/src/cli.ts` | `tsx harness/src/cli.ts <example> [--approve] [--resume] [--llm anthropic]` |
+| `harness/src/llm.ts` | Anthropic and OpenAI-compatible clients (fetch, no SDK, token usage) and `ScriptedLLM` |
+| `harness/src/bench/` | Benchmark: model registry, codegen suite (sandboxed execution), pass@k / Wilson stats, reports, CLI |
+| `harness/src/docs.ts` | Knowledge-base lint and generated docs (`npm run docs:check`, `npm run docs:gen`) |
+| `benchmarks/` | `models.json` (vendors and models), `codegen/tasks.jsonl` (+ `build-tasks.mjs`), `results/` (git-ignored) |
+| `AGENTS.md`, `ARCHITECTURE.md`, `docs/` | Agent-first knowledge base (see above) |
+| `harness/src/cli.ts` | `tsx harness/src/cli.ts <example> [--approve] [--resume] [--llm anthropic\|<model id>] [--live-roles ...]` |
 | `harness/test/` | Retry, check-beats-judge, block, approve, tamper-restore, path-escape, resume |
 | `examples/room-booking/architecture.json` | The architect's rules for the example: independent routes, no upward imports, pool injected from `server.ts`, approved packages |
 | `examples/room-booking/calibration.json` | Five human-graded evaluator cases from a real run (two are failures) |
@@ -119,5 +154,5 @@ one commit per attempt).
 
 ## Status
 
-v0.3. Next: per-phase cost and time tracking, ablation switches (see section 8 of the architecture doc), browser
-(`page`) probes once an example has a UI.
+v0.4: multi-vendor benchmark and agent knowledge base. Next: [docs/exec-plans/active/](docs/exec-plans/active/003-benchmark-v2.md)
+(bootstrap CIs, more tasks, scheduled regression runs) and the [tech-debt tracker](docs/exec-plans/tech-debt-tracker.md).

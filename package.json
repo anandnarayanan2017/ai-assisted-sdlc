@@ -1,17 +1,23 @@
 {
   "name": "ai-assisted-sdlc",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
-  "description": "Planner/contract/generator/check/evaluator harness for long-running AI-assisted delivery (TypeScript)",
-  "engines": { "node": ">=22" },
+  "description": "Planner/contract/generator/check/evaluator harness for long-running AI-assisted delivery, with a multi-vendor model benchmark (TypeScript)",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "demo": "tsx harness/src/cli.ts room-booking --approve",
     "demo:live": "tsx harness/src/cli.ts room-booking --llm anthropic",
     "calibrate": "tsx harness/src/calibrate.ts room-booking",
-    "check-key": "tsx harness/src/check-key.ts"
+    "check-key": "tsx harness/src/check-key.ts",
+    "bench": "tsx harness/src/bench/cli.ts",
+    "bench:baselines": "tsx harness/src/bench/cli.ts --suite codegen --models reference,empty",
+    "docs:check": "tsx harness/src/docs-cli.ts check",
+    "docs:gen": "tsx harness/src/docs-cli.ts gen"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

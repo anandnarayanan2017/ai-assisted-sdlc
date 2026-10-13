@@ -1,0 +1,16 @@
+# @playwright/test — condensed reference (evaluator probes)
+
+- File: name.spec.ts; import { test, expect } from "@playwright/test".
+- HTTP API testing uses the `request` fixture (no browser):
+    test("rejects inverted window", async ({ request }) => {
+      const r = await request.get("/rooms/available?startAt=...&endAt=...", { headers: { "x-user-id": "1" } });
+      expect(r.status()).toBe(400);
+      expect(await r.json()).toMatchObject({ error: expect.any(String) });
+    });
+- request.post(url, { data: {...} }) sends JSON; r.ok(), r.status(), r.json(), r.text().
+- Relative URLs resolve against use.baseURL (the harness sets it to the running app).
+- UI testing uses `page`: await page.goto("/"); await page.getByRole("button", { name: "Book" }).click();
+  await expect(page.getByText("Booked")).toBeVisible(). Prefer getByRole / getByTestId over CSS selectors.
+- Parallel requests: await Promise.all(Array.from({ length: 20 }, () => request.post(...))).
+- Run: npx playwright test --config <file> --reporter=line. Exit code non-zero on any failure.
+- Do not install browsers in this repo's containers for API probes; the `request` fixture needs none.

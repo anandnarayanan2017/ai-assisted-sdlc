@@ -16,7 +16,7 @@ through different LLMs and ranks them on deterministic results.
 |---|---|
 | Understand the system and its layers | [ARCHITECTURE.md](ARCHITECTURE.md), diagrams in [docs/architecture.md](docs/architecture.md) |
 | Know the non-negotiable beliefs | [docs/design-docs/core-beliefs.md](docs/design-docs/core-beliefs.md) |
-| Find a design decision | [docs/design-docs/index.md](docs/design-docs/index.md) |
+| Find a design decision | [docs/adr/index.md](docs/adr/index.md) (ADRs), [docs/design-docs/index.md](docs/design-docs/index.md) |
 | Know what the product must do | [docs/product-specs/index.md](docs/product-specs/index.md) |
 | Plan non-trivial work | [docs/PLANS.md](docs/PLANS.md), then `docs/exec-plans/active/` |
 | Compare models or vendors | [docs/product-specs/model-benchmark.md](docs/product-specs/model-benchmark.md), [docs/design-docs/benchmark-methodology.md](docs/design-docs/benchmark-methodology.md) |

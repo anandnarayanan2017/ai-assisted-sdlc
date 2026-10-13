@@ -79,7 +79,7 @@ export async function checkDocs(root: string): Promise<string[]> {
   }
 
   // Indexes list every document in their folder, so progressive disclosure never hides a file.
-  for (const dir of ["docs/design-docs", "docs/product-specs"]) {
+  for (const dir of ["docs/design-docs", "docs/product-specs", "docs/adr"]) {
     const index = path.join(root, dir, "index.md");
     if (!existsSync(index)) { problems.push(`${dir}/index.md is missing`); continue; }
     const text = await readFile(index, "utf8");

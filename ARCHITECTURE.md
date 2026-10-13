@@ -2,7 +2,7 @@
 
 Top-level map of the code: domains, layers, and the rules between them. Diagrams (system, sequence, state machine,
 Docker topology) are in [docs/architecture.md](docs/architecture.md); the reasons behind the shape are in
-[docs/design-docs/](docs/design-docs/index.md).
+[docs/adr/](docs/adr/index.md) (decision records) and [docs/design-docs/](docs/design-docs/index.md).
 
 ## Domains
 

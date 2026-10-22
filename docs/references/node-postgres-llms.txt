@@ -1,0 +1,25 @@
+# node-postgres (pg 8) — condensed reference
+
+## Pool
+- import pg from "pg"; const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+- pool.query(text, params) for single statements: parameters are $1, $2 ... never string interpolation.
+- Rows: (await pool.query("SELECT ...")).rows; rowCount for INSERT/UPDATE/DELETE.
+- pool.end() on shutdown (tests: afterAll).
+
+## Transactions: use ONE client
+  const client = await pool.connect();
+  try { await client.query("BEGIN"); ...; await client.query("COMMIT"); }
+  catch (e) { await client.query("ROLLBACK"); throw e; }
+  finally { client.release(); }
+- pool.query("BEGIN") then pool.query(...) is WRONG: each call may use a different connection.
+- A transaction alone does not prevent double-booking: check-then-insert races under READ COMMITTED.
+  Fix with a constraint (EXCLUDE USING gist ... WITH &&), SELECT ... FOR UPDATE on a parent row, or
+  pg_advisory_xact_lock(key).
+
+## Error codes (err.code, SQLSTATE)
+- 23505 unique_violation -> 409; 23503 foreign_key_violation -> 404/400; 23514 check_violation -> 400;
+  23P01 exclusion_violation -> 409; 22P02 invalid_text_representation (bad int/uuid) -> 400.
+
+## Types
+- int8/bigint and numeric come back as strings; timestamptz as JS Date; serial ids as numbers.
+- import type { Pool } from "pg" for injected pools (type-only import is allowed by the architecture rules).

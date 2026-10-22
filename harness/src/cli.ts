@@ -1,21 +1,26 @@
 /**
- * Usage: tsx harness/src/cli.ts <example> [--approve] [--resume] [--llm scripted|anthropic]
- *        [--model <id>] [--max-features <n>] [--no-probe] [--no-calibration]
- * Every model call is saved to <workspace>/.harness/calls/ so the exact agent hand-offs can be read back.
+ * Usage: tsx harness/src/cli.ts <example> [--approve] [--resume] [--llm scripted|anthropic|<model id>]
+ *        [--model <id>] [--live-roles r1,r2] [--max-features <n>] [--no-probe] [--no-calibration]
+ * `--llm <model id>` takes any entry of benchmarks/models.json (any vendor). `--live-roles generator` sends only
+ * those roles to the live model and replays the recorded turns for the rest: fixed plan and contract tests,
+ * so different models are graded on identical work (what the SDLC benchmark does).
+ * Every model call is saved to <workspace>/.harness/calls/ so the exact agent hand-offs can be read back,
+ * and a run summary (sprints, attempts, tokens, cost) to <workspace>/.harness/metrics.json.
  */
-import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Example } from "./example.js";
-import { Harness, defaultConfig, type HarnessEvent } from "./harness.js";
-import { anthropicLLM, type LLM } from "./llm.js";
+import { Harness, defaultConfig, type HarnessEvent, type Progress } from "./harness.js";
+import { costUSD, liveLLM, loadModels, unavailable, type ModelSpec } from "./bench/models.js";
+import { anthropicLLM, type LLM, type Role, type Usage } from "./llm.js";
 
 const args = process.argv.slice(2);
 const name = args.find((a) => !a.startsWith("--"));
 const flag = (f: string) => args.includes(f);
 const opt = (f: string, d: string) => (args.includes(f) ? (args[args.indexOf(f) + 1] ?? d) : d);
 if (!name) {
-  console.error("usage: cli <example> [--approve] [--resume] [--llm scripted|anthropic] [--model id] [--max-features n] [--no-probe] [--no-calibration]");
+  console.error("usage: cli <example> [--approve] [--resume] [--llm scripted|anthropic|<model id>] [--model id] [--live-roles r1,r2] [--max-features n] [--no-probe] [--no-calibration]");
   process.exit(2);
 }
 
@@ -25,8 +30,28 @@ const ex = ((await import(pathToFileURL(path.join(exDir, "example.ts")).href)) a
 const workdir = path.join(exDir, "workspace");
 
 // Build the model first: a missing API key must fail before the previous workspace is wiped.
-const live = opt("--llm", "scripted") === "anthropic";
-const model = live ? anthropicLLM(opt("--model", process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5-5")) : ex.scriptedLLM();
+const which = opt("--llm", "scripted");
+const usage: Usage = { inputTokens: 0, outputTokens: 0 };
+const onUsage = (u: Usage) => { usage.inputTokens += u.inputTokens; usage.outputTokens += u.outputTokens; };
+let spec: ModelSpec | undefined;
+let liveModel: LLM | undefined;
+if (which === "anthropic") {
+  const id = opt("--model", process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5-5");
+  spec = { id, provider: "anthropic", model: id };
+  liveModel = anthropicLLM(id, 16000, { onUsage });
+} else if (which !== "scripted") {
+  spec = (await loadModels(path.join(root, "benchmarks", "models.json"))).find((m) => m.id === which);
+  if (!spec) throw new Error(`--llm ${which}: not "scripted", "anthropic" or an id in benchmarks/models.json`);
+  const why = unavailable(spec);
+  if (why) throw new Error(`--llm ${which}: ${why}`);
+  // "reference" replays the recorded turns: the baseline every live model is compared against.
+  if (spec.provider !== "reference") liveModel = spec.provider === "empty" ? async () => JSON.stringify({ files: {} }) : liveLLM(spec, { onUsage });
+}
+const live = liveModel !== undefined;
+const liveRoles = new Set(opt("--live-roles", "planner,contract,generator,prober,evaluator").split(",") as Role[]);
+const scripted = ex.scriptedLLM();
+const model: LLM = (role, system, user) => (liveModel && liveRoles.has(role) ? liveModel : scripted)(role, system, user);
+const t0 = Date.now();
 
 if (!flag("--resume")) {
   // Empty it rather than delete it: in Docker the workspace is a bind mount, so the host keeps the result.
@@ -96,7 +121,26 @@ function print(e: HarnessEvent) {
 }
 
 const harness = new Harness(llm, cfg, () => flag("--approve"));
-const progress = await harness.run(ex.request);
+// A model that keeps returning unusable output must still produce a metrics row, not crash the benchmark.
+const progress = await harness.run(ex.request).catch(async (e: unknown) => {
+  console.error(`\nRUN ERROR: ${e instanceof Error ? e.message : e}`);
+  const saved = await readFile(path.join(workdir, ".harness", "progress.json"), "utf8").catch(() => "");
+  const p: Progress = saved ? JSON.parse(saved) : { features: [], done: {}, attempts: {}, status: "blocked" };
+  p.status = "blocked";
+  return p;
+});
+const perSprint = progress.features.map((f) => ({
+  feature: f, result: progress.done[f] ?? "not reached", attempts: progress.attempts[f] ?? 0,
+}));
+const metrics = {
+  model: spec?.id ?? "scripted", liveRoles: live ? [...liveRoles] : [], status: progress.status,
+  sprints: progress.features.length,
+  passed: perSprint.filter((s) => s.result === "pass").length,
+  firstTry: perSprint.filter((s) => s.result === "pass" && s.attempts === 1).length,
+  attempts: perSprint.reduce((n, s) => n + s.attempts, 0),
+  calls, usage, costUSD: spec ? costUSD(spec, usage) : 0, wallSecs: (Date.now() - t0) / 1000, perSprint,
+};
+await writeFile(path.join(workdir, ".harness", "metrics.json"), JSON.stringify(metrics, null, 2));
 console.log("\n=== Summary ===");
 for (const feat of progress.features) {
   console.log(`${progress.done[feat] === "pass" ? "PASS" : "----"}  ${feat}  (attempts: ${progress.attempts[feat] ?? 0})`);

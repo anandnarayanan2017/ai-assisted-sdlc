@@ -1,0 +1,20 @@
+# Express 5 — condensed reference (example project: express ^5.1)
+
+## Differences from Express 4 that bite
+- Async handlers: a rejected promise from a route handler or middleware is passed to next(err) automatically.
+  No try/catch wrapper needed; do not call next() after sending a response.
+- Path syntax (path-to-regexp v8): wildcards must be named ("/files/*path"), optional segments use braces
+  ("/users{/:id}"). The old "*" and "?" path modifiers throw at startup.
+- req.query is a getter (read-only); req.body is undefined unless a body parser ran (use express.json()).
+- res.status() only accepts integers 100-999. res.redirect('back') removed. app.del removed (use app.delete).
+
+## Routing order matters
+- Routes match in registration order: register "/rooms/available" BEFORE "/rooms/:id", or ":id" captures
+  "available" (this exact bug is sprint 6 attempt 1 of the recorded run).
+
+## Patterns used in the example
+- createApp(pool) returns the app; src/server.ts owns the pg Pool and calls app.listen (composition root).
+- Error handler: 4-arg middleware registered last: app.use((err, req, res, next) => res.status(..).json({ error })).
+- Router per resource: const r = express.Router(); r.get("/", ...); app.use("/rooms", r).
+- JSON errors everywhere: { "error": "message" } with 400 validation, 401 unauthenticated, 403 forbidden,
+  404 not found, 409 conflict.

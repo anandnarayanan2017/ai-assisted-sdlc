@@ -1,0 +1,12 @@
+# vitest 3 — condensed reference
+
+- Run: npx vitest run (CI, single pass); vitest (watch). Config: vitest.config.ts -> defineConfig({ test: { include } }).
+- API: import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest".
+- Per-test timeout: it("name", async () => {...}, 60_000). Suite-wide: test.testTimeout.
+- Async: await expect(promise).rejects.toThrow(/msg/); expect(fn).toThrow().
+- Equality: toBe (Object.is), toEqual (deep), toStrictEqual (deep + undefined props), toMatchObject (subset).
+- Numbers: toBeCloseTo(x, digits). Arrays: toContain, toHaveLength.
+- Message on failure: expect(value, "explain what to fix").toEqual(...).
+- Files run in parallel workers; tests inside a file run sequentially unless it.concurrent.
+  Tests sharing one Postgres must not run files in parallel: use test.fileParallelism: false (the example does).
+- Mocks: vi.fn(), vi.spyOn(obj, "m"), vi.useFakeTimers() / vi.advanceTimersByTime(ms).

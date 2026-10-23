@@ -3,7 +3,9 @@
 Status: accepted · Owner: maintainers · Last verified: 2026-10-13
 
 These are the beliefs the harness is built on. They are written for agents first: short, checkable, and each tied to
-the mechanism that enforces it.
+the mechanism that enforces it. Sources: Anthropic's
+[Harness design for long-running application development](https://www.anthropic.com/engineering/harness-design-long-running-apps)
+(beliefs 5-7, 9, 11) and OpenAI's [Harness engineering](https://openai.com/index/harness-engineering/) (beliefs 1-4, 10).
 
 1. **Humans steer, agents execute.** People decide what to build and whether to release; agents do the typing.
    *Mechanism*: the human gate (`--approve`), exec plans written for humans to review.

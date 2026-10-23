@@ -6,6 +6,9 @@ Node.js + Express + PostgreSQL room-booking API end to end, entirely in Docker.
 
 Based on Anthropic's
 [Harness design for long-running application development](https://www.anthropic.com/engineering/harness-design-long-running-apps).
+The agent-first knowledge base (AGENTS.md as a map, `docs/` as the system of record, mechanical doc checks,
+continuous "garbage collection" of tech debt) follows OpenAI's
+[Harness engineering: leveraging Codex in an agent-first world](https://openai.com/index/harness-engineering/).
 
 ## Run it (Docker only)
 

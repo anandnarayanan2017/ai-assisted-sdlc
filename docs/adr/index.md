@@ -24,5 +24,6 @@ Format: MADR-lite (context, decision, alternatives, consequences). Accepted ADRs
 | [ADR-0017](0017-sandbox-model-code.md) | Sandbox model-generated code | accepted |
 | [ADR-0018](0018-agents-md-knowledge-base.md) | AGENTS.md is a map; docs/ is the system of record | accepted |
 | [ADR-0019](0019-exec-plans.md) | Execution plans are versioned artifacts | accepted |
+| [ADR-0020](0020-deterministic-orchestrator.md) | Deterministic orchestrator; agents are pluggable roles | accepted |
 
 New ADR: next number, copy an existing file's headings, add a row here, link it from the PR.

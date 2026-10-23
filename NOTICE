@@ -1,0 +1,7 @@
+ai-assisted-sdlc
+Copyright 2026 anandnarayanan2017
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Design ideas are credited in README.md and docs/design-docs/core-beliefs.md; no third-party code or text is
+bundled. Third-party packages installed by npm keep their own licenses.
